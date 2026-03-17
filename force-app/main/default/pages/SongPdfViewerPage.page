@@ -1,0 +1,753 @@
+<apex:page controller="SongPdfViewerController" showHeader="false" sidebar="false">
+    <apex:stylesheet value="{!URLFOR($Resource.SLDS, 'slds/styles/salesforce-lightning-design-system.min.css')}"/>
+    <apex:includeScript value="{!URLFOR($Resource.PDFJS311174, 'pdf.min.js')}" />
+    <script>
+        pdfjsLib.GlobalWorkerOptions.workerSrc = '{!URLFOR($Resource.PDFJS311174, 'pdf.worker.min.js')}';
+    </script>
+
+    <style>
+        body {
+            margin: 0;
+            font-family: sans-serif;
+            overflow: hidden;
+        }
+        .toolbar {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            padding: 8px 10px;
+            background: #f3f3f3;
+            border-bottom: 1px solid #ccc;
+        }
+        .toolbar-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 8px;
+        }
+        .toolbar-row.speed-row {
+            width: 100%;
+            flex-wrap: nowrap;
+        }
+        .speed-slider-wrapper {
+            display: flex;
+            flex-direction: column;
+            gap: 2px;
+            flex: 1;
+            min-width: 0;
+        }
+        .speed-slider-track {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            min-width: 0;
+        }
+        .speed-slider-track .label {
+            flex: 0 0 3em;
+            font-size: 12px;
+        }
+        .speed-slider-track .slider-area {
+            flex: 1;
+            min-width: 0;
+            display: flex;
+            flex-direction: column;
+            gap: 2px;
+        }
+        .speed-slider-track .value {
+            flex: 0 0 2em;
+            text-align: right;
+            font-weight: 600;
+        }
+        .speed-slider-ticks {
+            display: flex;
+            justify-content: space-between;
+            padding: 0 4px;
+            font-size: 10px;
+            color: #666;
+            line-height: 1;
+        }
+        .speed-slider-ticks span {
+            flex: 0 0 auto;
+        }
+        .speed-slider-input-row {
+            display: flex;
+            align-items: center;
+        }
+        #pdfViewer {
+            width: 100%;
+            height: calc(100vh - 145px);
+            overflow-y: auto;
+        }
+        canvas {
+            display: block;
+            margin: 0 auto;
+            max-width: 100%;
+            height: auto;
+        }
+        .progress-bar-container {
+            width: 100%;
+            height: 6px;
+            background: #eee;
+            padding: 0 12px;
+            box-sizing: border-box;
+        }
+        .progress-bar-fill {
+            height: 100%;
+            width: 0%;
+            background: #0070d2;
+            transition: width 0.1s ease;
+        }
+        .zone-markers-container {
+            position: relative;
+            width: 100%;
+            height: 28px;
+            background: #f8f8f8;
+            border-bottom: 1px solid #ddd;
+            padding: 0 12px;
+            box-sizing: border-box;
+        }
+        .zone-marker {
+            position: absolute;
+            top: 2px;
+            transform: translateX(-50%);
+            min-width: 24px;
+            height: 22px;
+            padding: 0 4px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 12px;
+            font-weight: 600;
+            color: #333;
+            background: #fff;
+            border: 2px solid #0070d2;
+            border-radius: 4px;
+            cursor: pointer;
+            user-select: none;
+            z-index: 2;
+        }
+        .zone-marker.selected {
+            background: #0070d2;
+            color: #fff;
+            border-color: #005a9e;
+        }
+        .zone-marker::before {
+            content: '';
+            position: absolute;
+            bottom: 100%;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 2px;
+            height: 6px;
+            background: #0070d2;
+        }
+        .zone-marker.first {
+            left: 0% !important;
+            transform: none;
+        }
+        input[type="range"] {
+            flex: 1;
+            min-width: 0;
+            vertical-align: middle;
+        }
+        .error-message {
+            padding: 20px;
+            text-align: center;
+            color: red;
+            font-weight: bold;
+        }
+        .zone-modal-overlay {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0,0,0,0.4);
+            z-index: 1000;
+            align-items: center;
+            justify-content: center;
+        }
+        .zone-modal-overlay.show {
+            display: flex;
+        }
+        .zone-modal {
+            background: #fff;
+            border-radius: 8px;
+            padding: 20px;
+            min-width: 280px;
+            max-width: 90vw;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.2);
+        }
+        .zone-modal h3 {
+            margin: 0 0 16px 0;
+            font-size: 16px;
+        }
+        .zone-modal-speed-row {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            margin-bottom: 20px;
+        }
+        .zone-modal-speed-row label {
+            flex: 0 0 3em;
+        }
+        .zone-modal-speed-row input[type="range"] {
+            flex: 1;
+        }
+        .zone-modal-speed-row .value {
+            flex: 0 0 2em;
+            font-weight: 600;
+        }
+        .zone-modal-buttons {
+            display: flex;
+            gap: 10px;
+            justify-content: flex-end;
+        }
+        .zone-modal-buttons button {
+            padding: 8px 16px;
+            border-radius: 4px;
+            font-size: 14px;
+            cursor: pointer;
+            border: 1px solid #ccc;
+            background: #f3f3f3;
+        }
+        .zone-modal-buttons button.primary {
+            background: #0070d2;
+            color: #fff;
+            border-color: #0070d2;
+        }
+        .zone-modal-buttons button.danger {
+            background: #c23934;
+            color: #fff;
+            border-color: #c23934;
+        }
+        .zone-modal-buttons button:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+        .song-name {
+            font-weight: 600;
+            font-size: 14px;
+        }
+    </style>
+
+    <apex:form id="zoneSaveForm">
+        <apex:inputHidden value="{!zoneStrToSave}" id="zoneStrHidden"/>
+        <apex:actionFunction name="saveZonesToServer" action="{!saveZonesAction}" rerender="zoneSaveStatus,msgPanel" oncomplete="onZonesSaveComplete()"/>
+    </apex:form>
+    <apex:outputPanel id="zoneSaveStatus" layout="none"/>
+
+    <apex:messages id="msgPanel"/>
+    
+    <!-- Toolbar -->
+    <div class="toolbar slds-theme_default">
+        <div class="toolbar-row">
+            <div>
+                <span class="song-name">{!songName}</span>
+            </div>
+            <div>
+                <button class="slds-button slds-button_brand" id="playBtn" onclick="toggleScroll()">Play</button>
+                <label for="zoomSelect" class="slds-m-left_medium">Zoom:</label>
+                <select id="zoomSelect" class="slds-select" onchange="onZoomChange()">
+                    <option value="1.0">100%</option>
+                    <option value="1.5">150%</option>
+                    <option value="2.0">200%</option>
+                    <option value="2.5">250%</option>
+                    <option value="3.0">300%</option>
+                    <option value="3.5">350%</option>
+                    <option value="4.0">400%</option>
+                </select>
+            </div>
+        </div>
+        <div class="toolbar-row speed-row">
+            <div class="speed-slider-wrapper">
+                <div class="speed-slider-track">
+                    <span class="label">Speed:</span>
+                    <div class="slider-area">
+                        <div class="speed-slider-ticks" id="speedSliderTicks"></div>
+                        <div class="speed-slider-input-row">
+                            <input type="range" id="speedSlider" min="1" max="20" value="{!scrollSpeed}" onchange="onSliderChange()" />
+                        </div>
+                    </div>
+                    <span class="value" id="speedValue">{!scrollSpeed}</span>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Progress Bar -->
+    <div class="progress-bar-container">
+        <div id="progressBar" class="progress-bar-fill"></div>
+    </div>
+
+    <!-- Zone Markers (below progress bar) -->
+    <div class="zone-markers-container" id="zoneMarkersContainer"></div>
+
+    <div id="zoneSpeedsData" class="zone-speeds-data" style="display:none"><apex:outputText value="{!IF(ISBLANK(zoneSpeedsJson), '[]', zoneSpeedsJson)}" escape="false"/></div>
+
+    <!-- Zone Edit Modal -->
+    <div class="zone-modal-overlay" id="zoneModalOverlay">
+        <div class="zone-modal">
+            <h3>Edit Zone Speed</h3>
+            <div class="zone-modal-speed-row">
+                <label>Speed:</label>
+                <input type="range" id="zoneModalSpeed" min="1" max="20" value="5" oninput="onZoneModalSpeedChange()" />
+                <span class="value" id="zoneModalSpeedValue">5</span>
+            </div>
+            <div class="zone-modal-buttons">
+                <button type="button" class="danger" id="zoneModalDeleteBtn">Delete Zone</button>
+                <button type="button" class="primary" id="zoneModalCloseBtn">Close</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- PDF Container -->
+    <div id="pdfViewer">
+        <apex:outputPanel rendered="{!NOT(ISBLANK(errorMessage))}" layout="block">
+            <div class="error-message">{!errorMessage}</div>
+        </apex:outputPanel>
+    </div>
+
+    <script>
+        let base64 = '';
+        const viewer = document.getElementById('pdfViewer');
+        let scrollFrame = null;
+        let scale = {!zoom};
+        const songId = '{!songId}';
+        const hasError = '{!IF(ISBLANK(errorMessage), "0", "1")}' === '1';
+
+        // Zones: [{startPct, endPct, speed}, ...] - contiguous 0-100%
+        let zones = [];
+        let selectedZoneIndex = -1;
+        let isDraggingSlider = false;
+
+        function loadZones() {
+            const el = document.getElementById('zoneSpeedsData') || document.querySelector('[id$="zoneSpeedsData"]') || document.querySelector('.zone-speeds-data');
+            const raw = el ? (el.textContent || el.innerText || '').trim() : '';
+            try {
+                zones = raw ? JSON.parse(raw) : [{ startPct: 0, endPct: 100, speed: 5 }];
+                if (!Array.isArray(zones) || zones.length === 0) {
+                    zones = [{ startPct: 0, endPct: 100, speed: 5 }];
+                }
+                normalizeZonesToIntegers();
+            } catch (e) {
+                zones = [{ startPct: 0, endPct: 100, speed: 5 }];
+            }
+        }
+
+        function normalizeZonesToIntegers() {
+            let changed = false;
+            for (let i = 0; i < zones.length; i++) {
+                const oldStart = zones[i].startPct;
+                const oldEnd = zones[i].endPct;
+                zones[i].startPct = Math.round(zones[i].startPct);
+                zones[i].endPct = Math.round(zones[i].endPct);
+                if (zones[i].startPct !== oldStart || zones[i].endPct !== oldEnd) changed = true;
+            }
+            if (zones.length > 0) {
+                zones[0].startPct = 0;
+                zones[zones.length - 1].endPct = 100;
+            }
+            if (changed) {
+                if (saveZonesTimeout) clearTimeout(saveZonesTimeout);
+                saveZonesTimeout = null;
+                doSaveZones();
+            }
+        }
+
+        function doSaveZones() {
+            const str = zonesToStr();
+            const hidden = document.getElementById('{!$Component.zoneSaveForm.zoneStrHidden}') || document.querySelector('[id$="zoneStrHidden"]');
+            if (hidden) {
+                hidden.value = str;
+                saveZonesToServer();
+            }
+        }
+
+        function getCurrentScrollPct() {
+            const maxScroll = viewer.scrollHeight - viewer.clientHeight;
+            if (maxScroll <= 0) return 0;
+            return Math.min(100, Math.max(0, (viewer.scrollTop / maxScroll) * 100));
+        }
+
+        function getSpeedForPct(pct) {
+            for (let i = 0; i < zones.length; i++) {
+                if (pct >= zones[i].startPct && pct < zones[i].endPct) return zones[i].speed;
+                if (i === zones.length - 1 && pct >= zones[i].startPct && pct <= zones[i].endPct) return zones[i].speed;
+            }
+            return zones.length > 0 ? zones[0].speed : 5;
+        }
+
+        function zonesToStr() {
+            return zones.map(z => {
+                const start = Math.round(z.startPct);
+                const end = Math.round(z.endPct);
+                return start + '%-' + end + '%:' + z.speed;
+            }).join(',');
+        }
+
+        let saveZonesTimeout = null;
+        function saveZones() {
+            if (saveZonesTimeout) clearTimeout(saveZonesTimeout);
+            saveZonesTimeout = setTimeout(function() {
+                saveZonesTimeout = null;
+                doSaveZones();
+            }, 300);
+        }
+
+        function onZonesSaveComplete() {
+            var msgs = document.querySelector('.message');
+            if (msgs && msgs.textContent.indexOf('Error') >= 0) {
+                console.error('Zone save error:', msgs.textContent);
+            }
+        }
+
+        function deselectZone() {
+            selectedZoneIndex = -1;
+            renderZoneMarkers();
+            syncSliderToCurrentZone();
+        }
+
+        function renderZoneMarkers() {
+            const container = document.getElementById('zoneMarkersContainer');
+            container.innerHTML = '';
+            container.onclick = (e) => { if (e.target === container) deselectZone(); };
+            for (let i = 0; i < zones.length; i++) {
+                const z = zones[i];
+                const marker = document.createElement('div');
+                marker.className = 'zone-marker' + (selectedZoneIndex === i ? ' selected' : '') + (i === 0 ? ' first' : '');
+                marker.style.left = (i === 0 ? 0 : z.startPct) + '%';
+                marker.textContent = z.speed;
+                marker.dataset.index = i;
+                marker.tabIndex = 0;
+                marker.addEventListener('click', (e) => { e.stopPropagation(); selectZone(i); });
+                container.appendChild(marker);
+            }
+        }
+
+        function selectZone(index) {
+            selectedZoneIndex = index;
+            renderZoneMarkers();
+            openZoneModal(index);
+        }
+
+        function openZoneModal(index) {
+            const z = zones[index];
+            if (!z) return;
+            const overlay = document.getElementById('zoneModalOverlay');
+            const speedInput = document.getElementById('zoneModalSpeed');
+            const speedVal = document.getElementById('zoneModalSpeedValue');
+            const deleteBtn = document.getElementById('zoneModalDeleteBtn');
+            speedInput.value = z.speed;
+            speedVal.textContent = z.speed;
+            deleteBtn.disabled = zones.length <= 1;
+            overlay.classList.add('show');
+        }
+
+        function closeZoneModal() {
+            document.getElementById('zoneModalOverlay').classList.remove('show');
+            selectedZoneIndex = -1;
+            renderZoneMarkers();
+            syncSliderToCurrentZone();
+        }
+
+        function onZoneModalSpeedChange() {
+            if (selectedZoneIndex < 0 || selectedZoneIndex >= zones.length) return;
+            const speedInput = document.getElementById('zoneModalSpeed');
+            const newSpeed = parseInt(speedInput.value);
+            document.getElementById('zoneModalSpeedValue').textContent = newSpeed;
+            zones[selectedZoneIndex].speed = newSpeed;
+            saveZones();
+            renderZoneMarkers();
+        }
+
+        function initZoneModal() {
+            document.getElementById('zoneModalCloseBtn').addEventListener('click', closeZoneModal);
+            document.getElementById('zoneModalDeleteBtn').addEventListener('click', function() {
+                if (selectedZoneIndex >= 0) {
+                    deleteZone(selectedZoneIndex);
+                    closeZoneModal();
+                }
+            });
+            document.getElementById('zoneModalOverlay').addEventListener('click', function(e) {
+                if (e.target === this) closeZoneModal();
+            });
+        }
+
+        function deleteZone(index) {
+            if (zones.length <= 1) return;
+            const z = zones[index];
+            if (index > 0) {
+                zones[index - 1].endPct = z.endPct;
+            } else {
+                zones[1].startPct = z.startPct;
+            }
+            zones.splice(index, 1);
+            selectedZoneIndex = -1;
+            saveZones();
+            renderZoneMarkers();
+            syncSliderToCurrentZone();
+        }
+
+        function syncSliderToCurrentZone() {
+            const pct = getCurrentScrollPct();
+            const speed = getSpeedForPct(pct);
+            const slider = document.getElementById('speedSlider');
+            const val = document.getElementById('speedValue');
+            if (slider) { slider.value = speed; }
+            if (val) { val.textContent = speed; }
+        }
+
+        const MAX_CANVAS_DIM = 4096;
+        const MAX_CANVAS_AREA = 16000000;
+
+        async function getSafeScale(page, requestedScale) {
+            const vp = page.getViewport({ scale: requestedScale });
+            const w = Math.ceil(vp.width);
+            const h = Math.ceil(vp.height);
+            const area = w * h;
+
+            if (w <= MAX_CANVAS_DIM && h <= MAX_CANVAS_DIM && area <= MAX_CANVAS_AREA) {
+                return requestedScale;
+            }
+            const dimFactorW = MAX_CANVAS_DIM / w;
+            const dimFactorH = MAX_CANVAS_DIM / h;
+            const areaFactor = Math.sqrt(MAX_CANVAS_AREA / area);
+            const factor = Math.min(dimFactorW, dimFactorH, areaFactor) * 0.98;
+            return requestedScale * Math.max(factor, 0.1);
+        }
+
+        function renderPageTiled(page, scale, container) {
+            const viewport = page.getViewport({ scale });
+            const totalWidth  = Math.ceil(viewport.width);
+            const totalHeight = Math.ceil(viewport.height);
+
+            const safeTileHeightByArea = Math.floor(MAX_CANVAS_AREA / Math.max(1, totalWidth));
+            const SAFE_TILE_HEIGHT = Math.max(512, Math.min(MAX_CANVAS_DIM, safeTileHeightByArea));
+
+            if (totalHeight <= SAFE_TILE_HEIGHT) {
+                const canvas = document.createElement('canvas');
+                const ctx = canvas.getContext('2d');
+                canvas.width = totalWidth;
+                canvas.height = totalHeight;
+                container.appendChild(canvas);
+                return page.render({ canvasContext: ctx, viewport }).promise;
+            }
+
+            let y = 0;
+            const jobs = [];
+            while (y < totalHeight) {
+                const sliceHeight = Math.min(SAFE_TILE_HEIGHT, totalHeight - y);
+                const canvas = document.createElement('canvas');
+                const ctx = canvas.getContext('2d');
+
+                canvas.width = totalWidth;
+                canvas.height = sliceHeight;
+                container.appendChild(canvas);
+
+                const transform = [1, 0, 0, 1, 0, -y];
+                jobs.push(page.render({ canvasContext: ctx, viewport, transform }).promise);
+                y += sliceHeight;
+            }
+            return Promise.all(jobs);
+        }
+
+        function renderPDF(pdfBase64) {
+            const data = pdfBase64 || base64;
+            if (!data || !data.trim()) return;
+            base64 = data;
+            const raw = atob(data.trim());
+            const bytes = new Uint8Array(raw.length);
+            for (let i = 0; i < raw.length; i++) bytes[i] = raw.charCodeAt(i);
+
+            viewer.innerHTML = '';
+            setZoomDropdown(scale);
+
+            pdfjsLib.getDocument({ data: bytes.buffer }).promise
+                .then(async pdf => {
+                    const jobs = [];
+                    for (let i = 1; i <= pdf.numPages; i++) {
+                        jobs.push(
+                            pdf.getPage(i).then(async page => {
+                                const safeScale = await getSafeScale(page, scale);
+                                if (safeScale !== scale) {
+                                    console.log('Adjusted page ' + i + ' scale from ' + scale + ' to ' + safeScale.toFixed(2) + ' for device limits.');
+                                }
+                                return renderPageTiled(page, safeScale, viewer);
+                            })
+                        );
+                    }
+                    return Promise.all(jobs);
+                })
+                .then(() => {
+                    updateProgress();
+                })
+                .catch(err => {
+                    console.error('PDF render error:', err);
+                });
+        }
+
+        function toggleScroll() {
+            const btn = document.getElementById('playBtn');
+
+            if (scrollFrame) {
+                cancelAnimationFrame(scrollFrame);
+                scrollFrame = null;
+                btn.innerText = 'Play';
+            } else {
+                let scrollRemainder = 0;
+                const step = () => {
+                    const pct = getCurrentScrollPct();
+                    const speed = getSpeedForPct(pct);
+                    const minScroll = 0.1;
+                    const maxScroll = 2;
+                    const exactScrollAmount = minScroll + ((speed - 1) / 19) * (maxScroll - minScroll);
+
+                    scrollRemainder += exactScrollAmount;
+                    const scrollInt = Math.floor(scrollRemainder);
+                    scrollRemainder -= scrollInt;
+
+                    viewer.scrollTop += scrollInt;
+                    updateProgress();
+
+                    if (viewer.scrollTop + viewer.clientHeight >= viewer.scrollHeight - 2) {
+                        scrollFrame = null;
+                        btn.innerText = 'Play';
+                        return;
+                    }
+
+                    scrollFrame = requestAnimationFrame(step);
+                };
+                scrollFrame = requestAnimationFrame(step);
+                btn.innerText = 'Pause';
+            }
+        }
+
+        function updateProgress() {
+            const maxScroll = viewer.scrollHeight - viewer.clientHeight;
+            const progress = maxScroll > 0 ? Math.min(viewer.scrollTop / maxScroll, 1) : 0;
+            document.getElementById('progressBar').style.width = (progress * 100) + '%';
+        }
+
+        function onSliderChange() {
+            const slider = document.getElementById('speedSlider');
+            const newSpeed = parseInt(slider.value);
+            document.getElementById('speedValue').textContent = newSpeed;
+
+            if (selectedZoneIndex >= 0 && selectedZoneIndex < zones.length) {
+                zones[selectedZoneIndex].speed = newSpeed;
+            } else {
+                splitOrUpdateZoneAtPct(getCurrentScrollPct(), newSpeed);
+            }
+            saveZones();
+            renderZoneMarkers();
+        }
+
+        function splitOrUpdateZoneAtPct(pct, newSpeed) {
+            const roundedPct = Math.round(pct);
+            for (let i = 0; i < zones.length; i++) {
+                const z = zones[i];
+                const zStart = Math.round(z.startPct);
+                const zEnd = Math.round(z.endPct);
+                if (roundedPct > zStart && roundedPct < zEnd) {
+                    const newZone = { startPct: roundedPct, endPct: zEnd, speed: newSpeed };
+                    z.endPct = roundedPct;
+                    zones.splice(i + 1, 0, newZone);
+                    return;
+                }
+                if (pct >= z.startPct && pct <= z.endPct) {
+                    z.speed = newSpeed;
+                    return;
+                }
+            }
+        }
+
+        function onZoomChange() {
+            const zoomVal = document.getElementById('zoomSelect').value;
+            Visualforce.remoting.Manager.invokeAction(
+                'SongPdfViewerController.saveZoomAjax',
+                songId,
+                parseFloat(zoomVal),
+                function(result, event) {
+                    if (!(event.status && result === 'success')) {
+                        console.error('Failed to save zoom level:', result);
+                    } else {
+                        location.reload();
+                    }
+                }
+            );
+        }
+
+        function setZoomDropdown(value) {
+            const zoomSelect = document.getElementById('zoomSelect');
+            for (let option of zoomSelect.options) {
+                option.selected = (parseFloat(option.value) === value);
+            }
+        }
+
+        function initSpeedSlider() {
+            const slider = document.getElementById('speedSlider');
+            const initialSpeed = zones.length > 0 ? zones[0].speed : 5;
+            slider.value = initialSpeed;
+            document.getElementById('speedValue').textContent = initialSpeed;
+        }
+
+        viewer.addEventListener('scroll', () => {
+            updateProgress();
+            if (selectedZoneIndex < 0 && !isDraggingSlider) syncSliderToCurrentZone();
+        });
+
+        function initSliderDragDetection() {
+            const slider = document.getElementById('speedSlider');
+            if (!slider) return;
+            slider.addEventListener('mousedown', () => { isDraggingSlider = true; });
+            slider.addEventListener('touchstart', () => { isDraggingSlider = true; });
+            document.addEventListener('mouseup', () => { isDraggingSlider = false; });
+            document.addEventListener('touchend', () => { isDraggingSlider = false; });
+        }
+        window.addEventListener('resize', () => location.reload());
+
+        function initSpeedSliderTicks() {
+            const container = document.getElementById('speedSliderTicks');
+            if (!container) return;
+            container.innerHTML = '';
+            for (let i = 1; i <= 20; i++) {
+                const span = document.createElement('span');
+                span.textContent = i;
+                container.appendChild(span);
+            }
+        }
+
+        document.addEventListener('DOMContentLoaded', () => {
+            loadZones();
+            renderZoneMarkers();
+            initSpeedSlider();
+            initSpeedSliderTicks();
+            initSliderDragDetection();
+            initZoneModal();
+        });
+
+        function loadAndRenderPDF() {
+            if (hasError) return;
+            Visualforce.remoting.Manager.invokeAction(
+                'SongPdfViewerController.getPdfBase64',
+                songId,
+                function(result, event) {
+                    if (event.status && result && result.trim()) {
+                        renderPDF(result);
+                    } else {
+                        var errDiv = document.querySelector('.error-message');
+                        if (!errDiv) {
+                            var div = document.createElement('div');
+                            div.className = 'error-message';
+                            div.textContent = 'Could not load PDF.';
+                            viewer.appendChild(div);
+                        }
+                    }
+                }
+            );
+        }
+        loadAndRenderPDF();
+    </script>
+</apex:page>

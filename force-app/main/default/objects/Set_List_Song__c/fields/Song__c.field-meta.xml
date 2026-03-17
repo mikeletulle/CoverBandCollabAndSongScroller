@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<CustomField xmlns="http://soap.sforce.com/2006/04/metadata">
+    <fullName>Song__c</fullName>
+    <deleteConstraint>SetNull</deleteConstraint>
+    <label>Song</label>
+    <referenceTo>Song__c</referenceTo>
+    <relationshipLabel>Set List Songs</relationshipLabel>
+    <relationshipName>Set_List_Songs</relationshipName>
+    <required>false</required>
+    <trackTrending>false</trackTrending>
+    <type>Lookup</type>
+</CustomField>

@@ -1,0 +1,54 @@
+.list-scroll-container {
+    max-height: 50vh;
+    overflow-y: auto;
+    border: 1px solid var(--lwc-colorBorder, #dddbda);
+    border-radius: 0.25rem;
+}
+.table {
+    overflow: hidden;
+}
+.thead, .tr {
+    display: grid;
+    grid-template-columns: 1fr 120px 120px;
+    align-items: center;
+}
+.thead {
+    background: var(--lwc-colorBackgroundAlt, #f3f2f2);
+    font-weight: 600;
+    padding-top: .5rem;
+    padding-bottom: .5rem;
+    border-bottom: 1px solid var(--lwc-colorBorder, #dddbda);
+}
+.tbody {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+}
+.tr {
+    padding: .5rem .75rem;
+    border-bottom: 1px solid var(--lwc-colorBorder, #dddbda);
+    background: #fff;
+    cursor: grab;
+}
+.tr:last-child {
+    border-bottom: 0;
+}
+.tr:active {
+    cursor: grabbing;
+}
+.td.name, .th.name {
+    padding-right: .75rem;
+}
+.td.curr, .td.next, .th.curr, .th.next {
+    text-align: right;
+}
+.drag-icon {
+    margin-right: .5rem;
+}
+.truncate {
+    display: inline-block;
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}

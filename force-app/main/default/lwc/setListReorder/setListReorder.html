@@ -1,0 +1,53 @@
+<!--
+    setListReorder LWC: Drag-and-drop UI for reordering songs in a Set List.
+    Displays a table of songs with current order and preview of new order after drag.
+-->
+<template>
+    <lightning-card title="Reorder Set List Songs" icon-name="custom:custom63">
+        <div class="slds-p-around_medium">
+            <!-- Loading state: show spinner while fetching songs -->
+            <template if:true={loading}>
+                <lightning-spinner size="small"></lightning-spinner>
+            </template>
+
+            <!-- Main content: table of draggable song rows -->
+            <template if:false={loading}>
+                <div class="list-scroll-container">
+                <div class="table">
+                    <!-- Column headers: Name, Current order, New order (preview) -->
+                    <div class="thead slds-p-horizontal_small">
+                        <div class="th name">Name</div>
+                        <div class="th curr">Current</div>
+                        <div class="th next">New</div>
+                    </div>
+
+                    <!-- Draggable list: each row can be reordered via drag-and-drop -->
+                    <ul class="tbody" ondragover={onDragOver}>
+                        <template for:each={rows} for:item="row" for:index="index">
+                            <li key={row.id}
+                                class="tr"
+                                data-index={index}
+                                draggable="true"
+                                ondragstart={onDragStart}
+                                ondragend={onDragEnd}
+                                ondrop={onDrop}>
+                                <div class="td name">
+                                    <lightning-icon icon-name="utility:drag_and_drop" size="x-small" class="drag-icon"></lightning-icon>
+                                    <span class="truncate" title={row.name}>{row.name}</span>
+                                </div>
+                                <div class="td curr">{row.currentOrder}</div>
+                                <div class="td next">{row.newOrder}</div>
+                            </li>
+                        </template>
+                    </ul>
+                </div>
+                </div>
+
+                <!-- Persist the new order to the server -->
+                <div class="slds-m-top_medium slds-align_absolute-center">
+                    <lightning-button variant="brand" label="Save Order" onclick={onSave}></lightning-button>
+                </div>
+            </template>
+        </div>
+    </lightning-card>
+</template>
